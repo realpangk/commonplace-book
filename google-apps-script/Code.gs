@@ -43,7 +43,7 @@ function doPost(e) {
   let out;
   try {
     const req = JSON.parse(e.postData.contents);
-    if (req.key !== SECRET) throw new Error('รหัสลับไม่ถูกต้อง');
+    if (req.key !== SECRET) throw new Error('Wrong secret');
     out = handle_(req);
     out.ok = true;
   } catch (err) {

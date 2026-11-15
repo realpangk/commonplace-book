@@ -40,13 +40,13 @@ async function api(action, payload = {}) {
   const res = await fetch(cfg.url, { method: 'POST', body: JSON.stringify({ key: cfg.key, action, ...payload }) });
   if (!res.ok) throw new Error('HTTP ' + res.status);
   const j = await res.json();
-  if (!j.ok) throw new Error(j.error || 'error');
+  if (!j.ok) throw new Error(/รหัสลับ/.test(j.error || '') ? 'Wrong secret' : (j.error || 'error'));
   return j;
 }
 
 function persist() {
   const ok = store.set(remote() ? K.cache : K.demo, db);
-  if (!ok && !remote()) toast('พื้นที่โหมดทดลองเต็มแล้ว — เชื่อม Google Sheets เพื่อเก็บรูปได้ไม่จำกัด');
+  if (!ok && !remote()) toast('Demo storage is full — connect Google Sheets to keep more photos');
 }
 
 function seedCats() {
@@ -93,7 +93,7 @@ async function refresh() {
     persist();
     if (!['new', 'edit'].includes(route().name)) render();
   } catch (err) {
-    toast('เชื่อมต่อ Google Sheets ไม่สำเร็จ: ' + err.message);
+    toast('Could not reach Google Sheets: ' + err.message);
   } finally { busy(false); }
 }
 
@@ -131,7 +131,7 @@ function render() {
 
 /* ================= views ================= */
 function banner() {
-  return remote() ? '' : `<div class="banner">โหมดทดลอง — ข้อมูลเก็บอยู่ในเครื่องนี้เท่านั้น <a href="#/settings">เชื่อม Google Sheets</a> เพื่อเก็บจริง</div>`;
+  return remote() ? '' : `<div class="banner">Demo mode — notes are saved on this device only. <a href="#/settings">Connect Google Sheets</a> to keep them.</div>`;
 }
 
 function viewIndex() {
@@ -151,7 +151,7 @@ function viewIndex() {
           </div>
         </a>`).join('')}
     </section>
-    <button class="ghost" data-act="manage">+ เพิ่ม / แก้ไขหมวดหมู่</button>`;
+    <button class="ghost" data-act="manage">+ Add / edit categories</button>`;
 }
 
 function photosHTML(images) {
@@ -175,7 +175,7 @@ function entryHTML(e) {
         <span class="dot" style="background:${esc(colorOf(e.category))}"></span>
         <div class="date">${esc(fmtDate(e.date))}</div>
         <div>${esc(e.subcategory || '')}</div>
-        <button class="edit" data-act="edit" data-id="${esc(e.id)}">แก้ไข</button>
+        <button class="edit" data-act="edit" data-id="${esc(e.id)}">Edit</button>
       </div>
       <div class="body">
         ${e.title ? `<h2>${esc(e.title)}</h2>` : ''}
@@ -187,7 +187,7 @@ function entryHTML(e) {
 }
 
 function viewBook(r) {
-  if (!db.categories.length) return `<div class="empty">ยังไม่มีหมวดหมู่</div>`;
+  if (!db.categories.length) return `<div class="empty">No categories yet</div>`;
   const cat = catOf(r.arg) || catOf(ui.lastCat) || db.categories[0];
   if (ui.lastCat !== cat.name) { ui.lastCat = cat.name; bookSub = ''; store.set(K.ui, ui); }
   if (r.q.get('e')) bookSub = '';
@@ -210,7 +210,7 @@ function viewBook(r) {
     </div>
     ${list.length
       ? `<section class="pages">${list.map(entryHTML).join('')}</section>`
-      : `<div class="empty">หน้านี้ยังว่างอยู่<br>กด + เพื่อเริ่มจดเรื่องแรก</div>`}`;
+      : `<div class="empty">This page is empty<br>Tap + to write your first note</div>`}`;
 }
 
 function viewCal() {
@@ -262,62 +262,62 @@ function subOptions(catName, selected) {
   const subs = c ? c.subs : [];
   return `<option value="">—</option>` +
     subs.map(s => `<option ${s === selected ? 'selected' : ''}>${esc(s)}</option>`).join('') +
-    `<option value="__new">+ เพิ่มหมวดย่อยใหม่…</option>`;
+    `<option value="__new">+ New sub-category…</option>`;
 }
 
 function picksHTML() {
   const n = draft.images.length;
   return draft.images.map((im, i) => `
-      <div class="pick"><img src="${esc(im.src)}" alt=""><button type="button" data-act="rm-img" data-i="${i}" aria-label="ลบรูป">×</button></div>`).join('') +
-    (n < 6 ? `<label class="pick add"><input type="file" id="files" accept="image/*" multiple><span>+ รูป<br>${n}/6</span></label>` : '');
+      <div class="pick"><img src="${esc(im.src)}" alt=""><button type="button" data-act="rm-img" data-i="${i}" aria-label="Remove photo">×</button></div>`).join('') +
+    (n < 6 ? `<label class="pick add"><input type="file" id="files" accept="image/*" multiple><span>+ Photo<br>${n}/6</span></label>` : '');
 }
 
 function viewForm(r) {
   const e = r.name === 'edit' ? db.entries.find(x => x.id === r.arg) : null;
-  if (r.name === 'edit' && !e) return `<div class="empty">ไม่พบโน้ตนี้</div>`;
-  if (!db.categories.length) return `<div class="empty">เพิ่มหมวดหมู่ก่อนนะคะ</div>`;
+  if (r.name === 'edit' && !e) return `<div class="empty">Note not found</div>`;
+  if (!db.categories.length) return `<div class="empty">Add a category first</div>`;
   draft = { id: e ? e.id : null, created_at: e ? e.created_at : null, images: (e ? e.images || [] : []).map(src => ({ src })) };
   const cat = (e && e.category) || (catOf(ui.lastCat) || db.categories[0]).name;
   return `
-    <p class="eyebrow">${e ? 'Edit note' : 'New note'}</p>
-    <h1>${e ? 'แก้ไขโน้ต' : 'จดบันทึก'}</h1>
+    <p class="eyebrow">Commonplace Book</p>
+    <h1>${e ? 'Edit note' : 'New note'}</h1>
     <form class="sheet-form" id="entry-form">
-      <label><span class="lbl">วันที่</span><input type="date" name="date" value="${esc(e ? e.date : today())}" required></label>
+      <label><span class="lbl">Date</span><input type="date" name="date" value="${esc(e ? e.date : today())}" required></label>
       <div class="row2">
         <label><span class="lbl">Category</span>
           <select name="category" id="f-cat">${db.categories.map(c => `<option ${c.name === cat ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
         <label><span class="lbl">Sub-category</span>
           <select name="subcategory" id="f-sub">${subOptions(cat, e ? e.subcategory : '')}</select></label>
       </div>
-      <label><span class="lbl">หัวข้อ</span><input type="text" name="title" value="${esc(e ? e.title : '')}" placeholder="ตั้งชื่อสั้น ๆ (ไม่ใส่ก็ได้)"></label>
-      <label><span class="lbl">ข้อความ</span><textarea name="text" placeholder="จดสิ่งที่ชอบ ได้ฟัง ได้อ่าน…">${esc(e ? e.text : '')}</textarea></label>
-      <label><span class="lbl">ที่มา</span><input type="text" name="source" value="${esc(e ? e.source : '')}" placeholder="ชื่อหนังสือ คนพูด หรือวางลิงก์"></label>
-      <div class="field"><span class="lbl">รูปภาพ (สูงสุด 6)</span><div class="picks" id="picks">${picksHTML()}</div></div>
+      <label><span class="lbl">Title</span><input type="text" name="title" value="${esc(e ? e.title : '')}" placeholder="Short title (optional)"></label>
+      <label><span class="lbl">Note</span><textarea name="text" placeholder="Something you read, heard or loved…">${esc(e ? e.text : '')}</textarea></label>
+      <label><span class="lbl">Source</span><input type="text" name="source" value="${esc(e ? e.source : '')}" placeholder="Book, person, or paste a link"></label>
+      <div class="field"><span class="lbl">Photos (up to 6)</span><div class="picks" id="picks">${picksHTML()}</div></div>
       <div class="actions">
-        <button class="solid" type="submit" id="save-btn">บันทึก</button>
-        ${e ? `<button class="ghost danger" type="button" data-act="delete-entry" data-id="${esc(e.id)}" style="margin:0">ลบโน้ตนี้</button>` : ''}
+        <button class="solid" type="submit" id="save-btn">Save</button>
+        ${e ? `<button class="ghost danger" type="button" data-act="delete-entry" data-id="${esc(e.id)}" style="margin:0">Delete this note</button>` : ''}
       </div>
     </form>`;
 }
 
 function viewSettings() {
   return `
-    <p class="eyebrow">Settings</p>
-    <h1>ตั้งค่า</h1>
+    <p class="eyebrow">Commonplace Book</p>
+    <h1>Settings</h1>
     <div class="banner">${remote()
-      ? 'เชื่อมต่อกับ Google Sheets แล้ว — ข้อมูลทั้งหมดอยู่ในบัญชี Google ของคุณ'
-      : 'ยังไม่ได้เชื่อม Google Sheets — ตอนนี้เป็นโหมดทดลอง ข้อมูลอยู่ในเครื่องนี้เท่านั้น'}</div>
+      ? 'Connected to Google Sheets — your notes live in your own Google account.'
+      : 'Not connected — demo mode, notes are saved on this device only.'}</div>
     <form class="sheet-form" id="cfg-form">
-      <label><span class="lbl">Web app URL (จาก Apps Script)</span><input type="url" name="url" value="${esc(cfg.url)}" placeholder="https://script.google.com/macros/s/…/exec"></label>
-      <label><span class="lbl">รหัสลับ (SECRET)</span><input type="password" name="key" value="${esc(cfg.key)}" autocomplete="off"></label>
-      <button class="solid" type="submit">${remote() ? 'บันทึกและโหลดข้อมูลใหม่' : 'เชื่อมต่อ'}</button>
-      ${remote() ? `<button class="ghost" type="button" data-act="disconnect">ยกเลิกการเชื่อมต่อในเครื่องนี้</button>` : ''}
+      <label><span class="lbl">Web app URL (from Apps Script)</span><input type="url" name="url" value="${esc(cfg.url)}" placeholder="https://script.google.com/macros/s/…/exec"></label>
+      <label><span class="lbl">Secret</span><input type="password" name="key" value="${esc(cfg.key)}" autocomplete="off"></label>
+      <button class="solid" type="submit">${remote() ? 'Save & reload' : 'Connect'}</button>
+      ${remote() ? `<button class="ghost" type="button" data-act="disconnect">Disconnect this device</button>` : ''}
     </form>
     <h1 style="font-size:20px;margin-top:34px">Export</h1>
-    <p class="hint">ดาวน์โหลดข้อมูลทั้งหมด (${db.entries.length} โน้ต) ไปใช้ต่อ — เปิด CSV ได้ใน Excel / Google Sheets</p>
-    <button class="ghost" data-act="export-csv">ดาวน์โหลด CSV</button>
-    <button class="ghost" data-act="export-json">ดาวน์โหลด JSON</button>
-    ${remote() ? '' : `<button class="ghost danger" data-act="reset-demo">ล้างข้อมูลทดลองและเริ่มใหม่</button>`}`;
+    <p class="hint">Download all your data (${db.entries.length} notes). CSV opens in Excel or Google Sheets.</p>
+    <button class="ghost" data-act="export-csv">Download CSV</button>
+    <button class="ghost" data-act="export-json">Download JSON</button>
+    ${remote() ? '' : `<button class="ghost danger" data-act="reset-demo">Reset demo data</button>`}`;
 }
 
 /* ================= overlay ================= */
@@ -337,7 +337,7 @@ function openDay(date) {
         ${e.images && e.images.length ? `<span class="pic"><img src="${esc(e.images[0])}" alt=""></span>` : ''}
         <span>
           <span class="meta"><span class="dot sm" style="background:${esc(colorOf(e.category))}"></span>${esc(e.category)}${e.subcategory ? ' · ' + esc(e.subcategory) : ''}</span>
-          <span class="ttl">${esc(e.title || e.text || '(รูปภาพ)')}</span>
+          <span class="ttl">${esc(e.title || e.text || '(photo)')}</span>
         </span>
         <span class="go">›</span>
       </button>`).join('')}`);
@@ -345,19 +345,19 @@ function openDay(date) {
 
 function openManage() {
   openSheet(`
-    <h3>หมวดหมู่</h3>
+    <h3>Categories</h3>
     <form id="cat-form">
       ${db.categories.map((c, i) => `
         <div class="mcat">
-          <div class="mcat-head"><input type="color" name="color-${i}" value="${esc(c.color)}" aria-label="สี">${esc(c.name)}</div>
+          <div class="mcat-head"><input type="color" name="color-${i}" value="${esc(c.color)}" aria-label="Color">${esc(c.name)}</div>
           <div class="subs">${esc(c.subs.join(', ')) || '—'}</div>
-          <input type="text" name="sub-${i}" placeholder="เพิ่มหมวดย่อยใหม่ใน ${esc(c.name)}">
+          <input type="text" name="sub-${i}" placeholder="Add a sub-category to ${esc(c.name)}">
         </div>`).join('')}
       <div class="mcat">
-        <span class="lbl">หมวดใหม่</span>
-        <div class="newcat"><input type="color" name="new-color" value="#9A8FC9" aria-label="สี"><input type="text" name="new-name" placeholder="ชื่อหมวด เช่น TRAVEL"></div>
+        <span class="lbl">New category</span>
+        <div class="newcat"><input type="color" name="new-color" value="#9A8FC9" aria-label="Color"><input type="text" name="new-name" placeholder="Name, e.g. TRAVEL"></div>
       </div>
-      <div class="actions"><button class="solid" type="submit">บันทึก</button></div>
+      <div class="actions"><button class="solid" type="submit">Save</button></div>
     </form>`);
 }
 
@@ -374,14 +374,14 @@ function compress(file, max) {
       URL.revokeObjectURL(url);
       resolve(c.toDataURL('image/jpeg', 0.82));
     };
-    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('เปิดรูปนี้ไม่ได้')); };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not open this image')); };
     img.src = url;
   });
 }
 
 async function addFiles(files) {
   const room = 6 - draft.images.length;
-  if (files.length > room) toast('แนบได้สูงสุด 6 รูป');
+  if (files.length > room) toast('Up to 6 photos per note');
   for (const f of [...files].slice(0, room)) {
     try { draft.images.push({ src: await compress(f, remote() ? 1600 : 900), isNew: true }); }
     catch (err) { toast(err.message); }
@@ -393,8 +393,8 @@ async function submitEntry(form) {
   const f = new FormData(form);
   const val = k => String(f.get(k) || '').trim();
   const sub = val('subcategory') === '__new' ? '' : val('subcategory');
-  if (!val('text') && !val('title') && !draft.images.length) return toast('ยังไม่ได้เขียนอะไรเลย');
-  const btn = $('#save-btn'); btn.disabled = true; btn.textContent = 'กำลังบันทึก…'; busy(true);
+  if (!val('text') && !val('title') && !draft.images.length) return toast('Nothing to save yet');
+  const btn = $('#save-btn'); btn.disabled = true; btn.textContent = 'Saving…'; busy(true);
   try {
     for (const im of draft.images) {
       if (im.isNew && remote()) {
@@ -412,24 +412,24 @@ async function submitEntry(form) {
     const i = db.entries.findIndex(x => x.id === entry.id);
     if (i >= 0) db.entries[i] = entry; else db.entries.push(entry);
     persist();
-    toast('บันทึกแล้ว');
+    toast('Saved');
     go(`#/book/${enc(entry.category)}?e=${enc(entry.id)}`);
   } catch (err) {
-    toast('บันทึกไม่สำเร็จ: ' + err.message);
-    btn.disabled = false; btn.textContent = 'บันทึก';
+    toast('Could not save: ' + err.message);
+    btn.disabled = false; btn.textContent = 'Save';
   } finally { busy(false); }
 }
 
 async function deleteEntry(id) {
-  if (!confirm('ลบโน้ตนี้ใช่ไหม?')) return;
+  if (!confirm('Delete this note?')) return;
   const e = db.entries.find(x => x.id === id);
   busy(true);
   try {
     if (remote()) await api('deleteEntry', { id });
     db.entries = db.entries.filter(x => x.id !== id);
-    persist(); toast('ลบแล้ว');
+    persist(); toast('Deleted');
     go(`#/book/${enc(e ? e.category : '')}`);
-  } catch (err) { toast('ลบไม่สำเร็จ: ' + err.message); }
+  } catch (err) { toast('Could not delete: ' + err.message); }
   finally { busy(false); }
 }
 
@@ -443,8 +443,8 @@ async function submitCats(form) {
   const name = String(f.get('new-name') || '').trim().toUpperCase();
   if (name && !catOf(name)) db.categories.push({ name, color: f.get('new-color') || '#999999', subs: [] });
   busy(true);
-  try { await saveCategories(); toast('บันทึกหมวดหมู่แล้ว'); }
-  catch (err) { toast('บันทึกไม่สำเร็จ: ' + err.message); }
+  try { await saveCategories(); toast('Categories saved'); }
+  catch (err) { toast('Could not save: ' + err.message); }
   finally { busy(false); }
   render();
 }
@@ -452,9 +452,9 @@ async function submitCats(form) {
 async function submitCfg(form) {
   const f = new FormData(form);
   const url = String(f.get('url') || '').trim(), key = String(f.get('key') || '');
-  if (!url) return toast('วาง Web app URL ก่อนนะคะ');
+  if (!url) return toast('Paste the Web app URL first');
   if (!/^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec$/.test(url))
-    return toast('ลิงก์นี้ไม่ใช่ Web app URL จาก Apps Script — ต้องขึ้นต้นด้วย script.google.com และลงท้ายด้วย /exec');
+    return toast('This is not an Apps Script Web app URL — it must start with script.google.com and end with /exec');
   const prev = cfg;
   cfg = { url, key };
   busy(true);
@@ -462,10 +462,10 @@ async function submitCfg(form) {
     const r = await api('list');
     store.set(K.cfg, cfg);
     db = { categories: r.categories, entries: r.entries };
-    persist(); toast('เชื่อมต่อสำเร็จ'); go('#/index');
+    persist(); toast('Connected'); go('#/index');
   } catch (err) {
     cfg = prev;
-    toast('เชื่อมต่อไม่สำเร็จ: ' + err.message);
+    toast('Could not connect: ' + err.message);
   } finally { busy(false); }
 }
 
@@ -496,13 +496,13 @@ const actions = {
   'rm-img': t => { draft.images.splice(+t.dataset.i, 1); $('#picks').innerHTML = picksHTML(); },
   'delete-entry': t => deleteEntry(t.dataset.id),
   disconnect: () => {
-    if (!confirm('ยกเลิกการเชื่อมต่อในเครื่องนี้? (ข้อมูลใน Google Sheets ยังอยู่ครบ)')) return;
+    if (!confirm('Disconnect this device? (Your data in Google Sheets stays safe.)')) return;
     cfg = { url: '', key: '' }; store.set(K.cfg, cfg);
     db = store.get(K.demo, null) || seed(); render();
   },
   'export-csv': exportCSV,
   'export-json': () => download(`commonplace-${today()}.json`, JSON.stringify(db, null, 2), 'application/json'),
-  'reset-demo': () => { if (confirm('ล้างข้อมูลทดลองทั้งหมด?')) { db = seed(); persist(); go('#/index'); } }
+  'reset-demo': () => { if (confirm('Clear all demo data?')) { db = seed(); persist(); go('#/index'); } }
 };
 
 document.addEventListener('click', ev => {
@@ -524,12 +524,12 @@ document.addEventListener('change', async ev => {
   if (t.id === 'files') return addFiles(t.files);
   if (t.id === 'f-cat') { $('#f-sub').innerHTML = subOptions(t.value, ''); return; }
   if (t.id === 'f-sub' && t.value === '__new') {
-    const name = (prompt('ชื่อหมวดย่อยใหม่') || '').trim();
+    const name = (prompt('New sub-category name') || '').trim();
     const c = catOf($('#f-cat').value);
     if (name && c) {
       if (!c.subs.includes(name)) c.subs.push(name);
       t.innerHTML = subOptions(c.name, name);
-      try { await saveCategories(); } catch (err) { toast('บันทึกหมวดย่อยไม่สำเร็จ: ' + err.message); }
+      try { await saveCategories(); } catch (err) { toast('Could not save sub-category: ' + err.message); }
     } else t.value = '';
   }
 });
