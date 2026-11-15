@@ -453,6 +453,8 @@ async function submitCfg(form) {
   const f = new FormData(form);
   const url = String(f.get('url') || '').trim(), key = String(f.get('key') || '');
   if (!url) return toast('วาง Web app URL ก่อนนะคะ');
+  if (!/^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec$/.test(url))
+    return toast('ลิงก์นี้ไม่ใช่ Web app URL จาก Apps Script — ต้องขึ้นต้นด้วย script.google.com และลงท้ายด้วย /exec');
   const prev = cfg;
   cfg = { url, key };
   busy(true);
